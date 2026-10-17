@@ -212,6 +212,38 @@ pub fn create_directory<P: AsHandle>(
     )
 }
 
+/// Create an owned directory without requesting DELETE access on its handle.
+/// This handle can be pinned without a close/reopen-by-name interval.
+pub fn create_directory_read<P: AsHandle>(
+    parent: P,
+    name: &OsStr,
+    security: &SecurityTemplate,
+) -> io::Result<File> {
+    open_at(parent, name, Kind::Directory, Access::Read, Some(security))
+}
+
+/// Reopen the same directory or directory reparse object with no delete sharing.
+/// The returned handle prevents rename/removal while allowing child IO. An
+/// existing DELETE handle conflicts; callers must create with read access when
+/// they need to pin a new directory without releasing its identity.
+pub fn pin_directory<F: AsHandle>(file: F) -> io::Result<File> {
+    let metadata = crate::winapi_util::file::information(&file)?;
+    if !crate::winapi_util::file::typ(&file)?.is_disk() || metadata.file_attributes() & 0x10 == 0 {
+        return Err(invalid());
+    }
+    // SAFETY: ReOpenFile borrows a live handle and returns a separately owned
+    // handle to that object. OPEN_REPARSE_POINT preserves a held link identity.
+    let raw = unsafe {
+        ReOpenFile(
+            file.as_handle().as_raw_handle() as HANDLE,
+            rights(Access::Read),
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+        )
+    };
+    owned_file(raw)
+}
+
 /// Create a new regular file with a protected DACL; never truncate an existing object.
 pub fn create_file<P: AsHandle>(
     parent: P,
@@ -303,7 +335,7 @@ pub(super) fn reopen_for_dacl<F: AsHandle>(file: F) -> io::Result<File> {
     owned_file(raw)
 }
 
-fn nt_result(status: i32) -> io::Result<()> {
+pub(super) fn nt_result(status: i32) -> io::Result<()> {
     if status < 0 {
         // SAFETY: pure NTSTATUS-to-Win32 translation.
         return Err(io::Error::from_raw_os_error(

@@ -326,6 +326,25 @@ pub fn set_dacl<H: AsHandle>(file: H, template: &SecurityTemplate) -> io::Result
     Ok(())
 }
 
+/// Set the protected DACL of this object without walking existing descendants.
+/// Unlike SetSecurityInfo, this native object operation does not perform the
+/// user-mode recursive inheritance update. Future children still inherit the
+/// template's inheritable ACEs. Ownership is never changed.
+pub fn set_dacl_only<H: AsHandle>(file: H, template: &SecurityTemplate) -> io::Result<()> {
+    let file = super::fs::reopen_for_dacl(file)?;
+    // SAFETY: the self-relative descriptor is initialized and correctly aligned,
+    // remains alive throughout this synchronous call, and no pointer escapes.
+    // The reopened handle requests WRITE_DAC on the same object.
+    let result = unsafe {
+        windows_sys::Wdk::Storage::FileSystem::NtSetSecurityObject(
+            file.as_raw_handle() as HANDLE,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            template.as_ptr() as _,
+        )
+    };
+    super::fs::nt_result(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
