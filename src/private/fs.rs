@@ -323,13 +323,14 @@ fn owned_file(raw: HANDLE) -> io::Result<File> {
 
 pub(super) fn reopen_for_dacl<F: AsHandle>(file: F) -> io::Result<File> {
     // ReOpenFile addresses the object referenced by the original handle, never
-    // its former pathname. This supports callers holding a read-only File.
+    // its former pathname. Preserve reparse objects instead of following their
+    // targets while acquiring WRITE_DAC. Read-only caller handles are supported.
     let raw = unsafe {
         ReOpenFile(
             file.as_handle().as_raw_handle() as HANDLE,
             READ_CONTROL | WRITE_DAC,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
         )
     };
     owned_file(raw)

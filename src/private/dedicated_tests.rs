@@ -124,3 +124,42 @@ fn native_pin_keeps_directory_alias_identity() -> io::Result<()> {
     fs::rename(fixture.0.join("alias"), fixture.0.join("moved"))?;
     Ok(())
 }
+
+#[test]
+#[ignore = "requires native Windows with symlink privilege or Developer Mode"]
+fn native_dacl_reopen_keeps_alias_and_target_security_separate() -> io::Result<()> {
+    let fixture = Fixture::new()?;
+    let parent = fixture.open()?;
+    let user = Sid::current_user()?;
+    let broad = SecurityTemplate::new(
+        &user,
+        &[
+            (user.clone(), 0x1f01ff),
+            (Sid::from_parts(1, &[0])?, 0x120089),
+        ],
+        true,
+    )?;
+    set_dacl_only(&parent, &broad)?;
+    fs::create_dir(fixture.0.join("target"))?;
+    fs::write(fixture.0.join("target/child"), b"unchanged")?;
+    std::os::windows::fs::symlink_dir("target", fixture.0.join("alias"))?;
+    let target = open_child(&parent, OsStr::new("target"), Kind::Directory, Access::Read)?;
+    let child = File::open(fixture.0.join("target/child"))?;
+    let target_before = security_info(&target)?;
+    let child_before = security_info(&child)?;
+    let alias = open_child(&parent, OsStr::new("alias"), Kind::Any, Access::Read)?;
+    let pin = pin_directory(&alias)?;
+    let alias_before = security_info(&pin)?;
+    let private = SecurityTemplate::new(&user, &[(user.clone(), 0x1f01ff)], true)?;
+    set_dacl_only(&pin, &private)?;
+    let alias_after = security_info(&pin)?;
+    assert_ne!(alias_after, alias_before);
+    assert!(alias_after.protected);
+    assert_eq!(alias_after.owner, user);
+    assert!(alias_after.dacl.unwrap().iter().all(|ace| ace.sid == user));
+    assert_eq!(security_info(&target)?, target_before);
+    assert_eq!(security_info(&child)?, child_before);
+    assert_eq!(read_reparse_target(&pin)?, PathBuf::from("target"));
+    assert_eq!(fs::read(fixture.0.join("target/child"))?, b"unchanged");
+    Ok(())
+}
