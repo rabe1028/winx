@@ -10,6 +10,7 @@ mod directory;
 mod directory_records;
 mod fs;
 mod security;
+mod temporary;
 
 pub use directory::{directory_names, DirectoryNames};
 pub use fs::{
@@ -19,6 +20,7 @@ pub use fs::{
 pub use security::{
     security_info, set_dacl, set_dacl_only, Ace, AceKind, SecurityInfo, SecurityTemplate, Sid,
 };
+pub use temporary::temporary_directory;
 
 fn invalid() -> std::io::Error {
     std::io::Error::new(
