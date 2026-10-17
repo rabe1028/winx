@@ -21,6 +21,7 @@
 
 mod cvt;
 pub mod file;
+pub mod private;
 mod ntdll;
 pub mod time;
 pub mod winapi_util;
