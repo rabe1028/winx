@@ -195,53 +195,6 @@ mod tests {
         Ok(())
     }
 
-    // Native: normalize objects held only through read handles, as the private
-    // storage adapter does after admitting an existing directory or file.
-    #[test]
-    fn read_only_held_objects_receive_a_protected_dacl() -> io::Result<()> {
-        use super::super::{
-            create_directory, create_file, open_child, open_root, security_info, set_dacl, Access,
-            Kind, SecurityTemplate, Sid,
-        };
-        use std::os::windows::ffi::OsStrExt;
-        let temp = std::env::temp_dir();
-        let wide: Vec<u16> = temp.as_os_str().encode_wide().collect();
-        let drive = u8::try_from(wide[0]).map_err(|_| super::super::invalid())?;
-        let mut parent = open_root(drive)?;
-        for component in temp.components().skip(2) {
-            parent = open_child(
-                &parent,
-                component.as_os_str(),
-                Kind::Directory,
-                Access::Read,
-            )?;
-        }
-        let user = Sid::current_user()?;
-        let template = SecurityTemplate::new(&user, &[(user.clone(), 0x1f01ff)], true)?;
-        let name = format!("winx-dacl-by-id-{}", std::process::id());
-        let created = create_directory(&parent, name.as_ref(), &template)?;
-        let child = create_file(&created, "file".as_ref(), &template)?;
-        drop(child);
-        let directory = open_child(&parent, name.as_ref(), Kind::Directory, Access::Read)?;
-        let file = open_child(&directory, "file".as_ref(), Kind::File, Access::Read)?;
-        let result = (|| {
-            for held in [&directory, &file] {
-                let before = identity(held)?;
-                set_dacl(held, &template)?;
-                let after = security_info(held)?;
-                assert!(after.protected);
-                assert_eq!(identity(held)?, before);
-            }
-            Ok(())
-        })();
-        let file = open_child(&directory, "file".as_ref(), Kind::File, Access::Manage)?;
-        super::super::remove(&file)?;
-        drop(file);
-        drop(directory);
-        super::super::remove(&created)?;
-        result
-    }
-
     #[test]
     fn descriptor_carries_the_full_extended_identifier() -> io::Result<()> {
         let mut id = [0; 16];
@@ -260,3 +213,9 @@ mod tests {
         Ok(())
     }
 }
+
+// Native Windows fixtures for the reopen contract. They only compile for and
+// run on Windows; cross-compilation does not execute them.
+#[cfg(test)]
+#[path = "identity_native_tests.rs"]
+mod native_tests;
