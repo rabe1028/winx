@@ -9,6 +9,7 @@ mod dedicated_tests;
 mod directory;
 mod directory_records;
 mod fs;
+mod identity;
 mod security;
 
 pub use directory::{directory_names, DirectoryNames};
