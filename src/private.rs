@@ -9,6 +9,7 @@ mod dedicated_tests;
 mod directory;
 mod directory_records;
 mod fs;
+mod identity;
 mod security;
 mod temporary;
 
