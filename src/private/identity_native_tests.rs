@@ -190,8 +190,11 @@ fn dacl_updates_coexist_with_delete_handles_and_delete_denying_pins() -> io::Res
                 let _delete = fixture.open(name, kind, Access::Manage)?;
                 setter(&held, &template)?;
             }
+            // Share access is recorded only for data or DELETE access, so the pin
+            // requests FILE_READ_DATA (FILE_LIST_DIRECTORY), as pin_directory does;
+            // without it the missing FILE_SHARE_DELETE would not be enforced.
             let _pin = OpenOptions::new()
-                .access_mode(READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+                .access_mode(READ_CONTROL | FILE_READ_ATTRIBUTES | FILE_READ_DATA | SYNCHRONIZE)
                 .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
                 .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
                 .open(fixture.root.join(name))?;
@@ -221,11 +224,15 @@ fn pending_deletion_fails_closed_before_reopen() -> io::Result<()> {
         let before = security_info(&held)?;
         let deleting = fixture.open(&file_name, Kind::File, Access::Manage)?;
         remove(&deleting)?;
+        let error = setter(&held, &template).unwrap_err();
+        // Admission refuses before OpenFileById, which would otherwise also
+        // report ERROR_ACCESS_DENIED; only the admission error has no OS code.
         assert_eq!(
-            setter(&held, &template).unwrap_err().kind(),
+            error.kind(),
             io::ErrorKind::PermissionDenied,
-            "{setter_name}",
+            "{setter_name}"
         );
+        assert_eq!(error.raw_os_error(), None, "{setter_name}: {error}");
         assert_eq!(security_info(&held)?, before, "{setter_name}: DACL changed");
     }
     Ok(())
