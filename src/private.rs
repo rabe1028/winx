@@ -5,6 +5,7 @@
 //! Child operations accept exactly one ordinary Windows filename component.
 mod buffer;
 mod fs;
+mod identity;
 mod security;
 
 pub use fs::{
