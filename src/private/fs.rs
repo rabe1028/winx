@@ -278,7 +278,7 @@ fn open_at<P: AsHandle>(
     owned_file(raw)
 }
 
-fn owned_file(raw: HANDLE) -> io::Result<File> {
+pub(super) fn owned_file(raw: HANDLE) -> io::Result<File> {
     if raw == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
@@ -290,17 +290,9 @@ fn owned_file(raw: HANDLE) -> io::Result<File> {
 }
 
 pub(super) fn reopen_for_dacl<F: AsHandle>(file: F) -> io::Result<File> {
-    // ReOpenFile addresses the object referenced by the original handle, never
-    // its former pathname. This supports callers holding a read-only File.
-    let raw = unsafe {
-        ReOpenFile(
-            file.as_handle().as_raw_handle() as HANDLE,
-            READ_CONTROL | WRITE_DAC,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            FILE_FLAG_BACKUP_SEMANTICS,
-        )
-    };
-    owned_file(raw)
+    // Open the held object by its verified file identifier, never its former
+    // pathname. The caller's handle, including a read-only File, stays the pin.
+    super::identity::reopen_by_id(file, READ_CONTROL | WRITE_DAC)
 }
 
 fn nt_result(status: i32) -> io::Result<()> {
